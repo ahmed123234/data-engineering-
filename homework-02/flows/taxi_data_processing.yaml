@@ -1,0 +1,32 @@
+id: taxi_data_processing
+namespace: nyc.taxi
+
+inputs:
+  - id: taxi
+    type: STRING
+    defaults: yellow
+  - id: year
+    type: STRING
+    defaults: "2020"
+  - id: month
+    type: STRING
+    defaults: "01"
+
+variables:
+  file: "{{inputs.taxi}}_tripdata_{{inputs.year}}-{{inputs.month}}.csv"
+  url: "https://github.com/DataTalksClub/nyc-tlc-data/releases/download/{{inputs.taxi}}/{{vars.file}}.gz"
+
+tasks:
+  - id: extract
+    type: io.kestra.plugin.core.http.Download
+    uri: "{{vars.url}}"
+    
+  - id: decompress
+    type: io.kestra.plugin.compress.ArchiveDecompress
+    from: "{{outputs.extract.uri}}"
+    algorithm: GZIP
+    
+  - id: count_rows
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - wc -l {{outputs.decompress.files[vars.file]}} | awk '{print $1-1}'
