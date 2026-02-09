@@ -54,7 +54,7 @@ This repository contains my solution for **Module 3: Data Warehousing & BigQuery
 │   ├── 01_create_external_table.sql
 │   ├── 02_create_materialized_table.sql
 │   ├── 03_create_partitioned_table.sql
-│   └── 05_homework_queries.sql
+│   └── 04_homework_queries.sql
 ├── scripts/
 │   ├── load_yellow_taxi_data.py
 │   └── setup_gcp_resources.sh
