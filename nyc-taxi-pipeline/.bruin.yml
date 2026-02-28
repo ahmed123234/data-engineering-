@@ -1,0 +1,45 @@
+# Bruin Configuration File
+# Environment-specific settings for NYC Taxi Pipeline
+
+environments:
+  default:
+    connections:
+      duckdb:
+        - name: "nyc_taxi"
+          path: "data/nyc_taxi.duckdb"
+          pool_size: 4
+          
+  dev:
+    connections:
+      duckdb:
+        - name: "nyc_taxi"
+          path: "data/dev_nyc_taxi.duckdb"
+          pool_size: 2
+          
+  staging:
+    connections:
+      duckdb:
+        - name: "nyc_taxi"
+          path: "data/staging_nyc_taxi.duckdb"
+          pool_size: 4
+          
+  prod:
+    connections:
+      duckdb:
+        - name: "nyc_taxi"
+          path: "data/prod_nyc_taxi.duckdb"
+          pool_size: 8
+          
+  test:
+    connections:
+      duckdb:
+        - name: "nyc_taxi"
+          path: ":memory:"
+          pool_size: 1
+
+# Global variables
+variables:
+  project: "nyc-taxi-analytics"
+  team: "data-engineering"
+  notification_email: "data-team@example.com"
+

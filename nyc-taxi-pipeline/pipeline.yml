@@ -1,0 +1,185 @@
+name: nyc_taxi_pipeline
+description: "Complete ELT pipeline for NYC taxi data processing"
+schedule: "0 0 * * *"  # Daily at midnight
+start_date: "2024-01-01"
+default_connection: duckdb/nyc_taxi
+retries: 3
+retry_delay: 300  # 5 minutes
+
+# Pipeline-level variables
+variables:
+  taxi_types:
+    type: array
+    items:
+      type: string
+    default: ["yellow", "green", "fhv"]
+    description: "Types of taxis to process"
+  
+  start_date:
+    type: string
+    default: "2024-01-01"
+    description: "Start date for data processing"
+  
+  end_date:
+    type: string
+    default: "2024-12-31"
+    description: "End date for data processing"
+  
+  min_fare:
+    type: float
+    default: 2.50
+    description: "Minimum valid fare amount"
+  
+  max_passengers:
+    type: integer
+    default: 6
+    description: "Maximum valid passenger count"
+
+# Asset definitions
+assets:
+  # ========== Ingestion Layer ==========
+  - file: assets/ingestion/trips.sql
+    name: ingestion.trips
+    description: "Raw NYC taxi trips data from parquet files"
+    type: duckdb.sql
+    materialization:
+      type: table
+      strategy: time_interval
+      time_column: pickup_datetime
+      interval: month
+    columns:
+      - name: vendor_id
+        type: integer
+        description: "Vendor ID (1=Creative, 2=VeriFone)"
+        checks:
+          - name: not_null
+          - name: accepted_values
+            value: [1, 2]
+      - name: pickup_datetime
+        type: timestamp
+        description: "Pickup timestamp"
+        checks:
+          - name: not_null
+      - name: dropoff_datetime
+        type: timestamp
+        description: "Dropoff timestamp"
+      - name: passenger_count
+        type: integer
+        description: "Number of passengers"
+        checks:
+          - name: positive
+      - name: trip_distance
+        type: float
+        description: "Trip distance in miles"
+        checks:
+          - name: positive
+      - name: fare_amount
+        type: float
+        description: "Fare amount"
+        checks:
+          - name: positive
+
+  - file: assets/ingestion/zones.sql
+    name: ingestion.zones
+    description: "Taxi zone lookup data from CSV"
+    type: duckdb.sql
+    materialization:
+      type: table
+    columns:
+      - name: location_id
+        type: integer
+        description: "Zone location ID"
+        checks:
+          - name: unique
+          - name: not_null
+      - name: zone_name
+        type: string
+        description: "Zone name"
+        checks:
+          - name: not_null
+      - name: borough
+        type: string
+        description: "Borough name"
+  
+  # ========== Staging Layer ==========
+  - file: assets/staging/stg_trips.sql
+    name: staging.trips
+    description: "Cleaned and standardized trips data"
+    type: duckdb.sql
+    depends_on:
+      - ingestion.trips
+      - ingestion.zones
+    materialization:
+      type: table
+      strategy: time_interval
+      time_column: pickup_date
+      interval: month
+    columns:
+      - name: trip_id
+        type: varchar
+        description: "Unique trip identifier"
+        checks:
+          - name: unique
+          - name: not_null
+      - name: pickup_date
+        type: date
+        description: "Pickup date"
+        checks:
+          - name: not_null
+      - name: zone_name
+        type: string
+        description: "Pickup zone"
+  
+  # ========== Mart Layer ==========
+  - file: assets/mart/trip_stats.sql
+    name: mart.trip_stats
+    description: "Aggregated trip statistics by day and zone"
+    type: duckdb.sql
+    depends_on:
+      - staging.trips
+    materialization:
+      type: table
+      strategy: replace
+    columns:
+      - name: pickup_date
+        type: date
+        description: "Date of pickup"
+        checks:
+          - name: not_null
+          - name: unique
+            with:
+              columns: [pickup_date, zone_name]
+      - name: zone_name
+        type: string
+        description: "Pickup zone name"
+      - name: borough
+        type: string
+        description: "Borough name"
+      - name: total_trips
+        type: integer
+        description: "Number of trips"
+        checks:
+          - name: positive
+      - name: avg_fare
+        type: float
+        description: "Average fare amount"
+        checks:
+          - name: positive
+      - name: total_revenue
+        type: float
+        description: "Total revenue"
+      - name: avg_distance
+        type: float
+        description: "Average trip distance"
+      - name: total_passengers
+        type: integer
+        description: "Total passengers"
+  
+  # ========== Quality Checks ==========
+  - file: assets/checks/trip_checks.yml
+    name: checks.trip_quality
+    description: "Data quality checks for mart layer"
+    type: duckdb.sql
+    depends_on:
+      - mart.trip_stats
+
