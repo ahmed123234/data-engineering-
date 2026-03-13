@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Processing 4M+ Taxi Trips with Apache Spark — DE Zoomcamp Week 6</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --black:   #0a0a0a;
+    --offblk:  #111111;
+    --panel:   #161616;
+    --border:  #2a2a2a;
+    --muted:   #555;
+    --mid:     #888;
+    --light:   #ccc;
+    --white:   #f5f2ed;
+    --accent:  #e8572a;
+    --accent2: #f0a500;
+    --spark:   #e25822;
+    --code-bg: #0d0d0d;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--black);
+    color: var(--white);
+    font-family: 'Lora', Georgia, serif;
+    font-size: 18px;
+    line-height: 1.8;
+    overflow-x: hidden;
+  }
+
+  /* ── NOISE TEXTURE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.4;
+  }
+
+  /* ── HEADER / HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0; right: 0;
+    height: 300px;
+    background: linear-gradient(to bottom, transparent, var(--black));
+    pointer-events: none;
+  }
+
+  /* Big Spark logo watermark */
+  .hero-watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(120px, 22vw, 320px);
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(226,88,34,0.12);
+    letter-spacing: -2px;
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+    animation: pulse-stroke 6s ease-in-out infinite;
+  }
+
+  @keyframes pulse-stroke {
+    0%, 100% { -webkit-text-stroke-color: rgba(226,88,34,0.08); }
+    50%       { -webkit-text-stroke-color: rgba(226,88,34,0.20); }
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 28px 60px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 2;
+  }
+
+  .topbar-logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .topbar-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .hero-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 60px;
+    position: relative;
+    z-index: 2;
+    max-width: 1100px;
+  }
+
+  .hero-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hero-tag::before {
+    content: '';
+    display: inline-block;
+    width: 32px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  .hero-title {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: clamp(42px, 6vw, 88px);
+    line-height: 1.05;
+    font-weight: 400;
+    letter-spacing: -1px;
+    margin-bottom: 32px;
+    max-width: 900px;
+  }
+
+  .hero-title em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .hero-subtitle {
+    font-size: 18px;
+    color: var(--mid);
+    max-width: 540px;
+    line-height: 1.7;
+    margin-bottom: 48px;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 48px;
+    padding-top: 48px;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat { display: flex; flex-direction: column; gap: 4px; }
+
+  .stat-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    color: var(--accent2);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ── SCROLL INDICATOR ── */
+  .scroll-indicator {
+    padding: 28px 60px;
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .scroll-line {
+    width: 40px;
+    height: 1px;
+    background: var(--muted);
+    animation: scroll-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes scroll-pulse {
+    0%, 100% { width: 40px; opacity: 1; }
+    50%       { width: 60px; opacity: 0.4; }
+  }
+
+  /* ── LAYOUT ── */
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 40px;
+  }
+
+  .container-wide {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 60px;
+  }
+
+  /* ── SECTION STRUCTURE ── */
+  section { padding: 80px 0; }
+
+  .section-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  h2 {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: clamp(30px, 4vw, 48px);
+    font-weight: 400;
+    line-height: 1.15;
+    margin-bottom: 32px;
+  }
+
+  h2 em { font-style: italic; color: var(--accent); }
+
+  h3 {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 26px;
+    font-weight: 400;
+    margin: 48px 0 16px;
+  }
+
+  p { margin-bottom: 24px; color: var(--light); }
+
+  strong { color: var(--white); font-weight: 500; }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(232,87,42,0.3); transition: border-color 0.2s; }
+  a:hover { border-color: var(--accent); }
+
+  /* ── DIVIDER ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0;
+  }
+
+  /* ── PULL QUOTE ── */
+  .pull-quote {
+    border-left: 3px solid var(--accent);
+    padding: 24px 36px;
+    margin: 48px 0;
+    background: var(--panel);
+    position: relative;
+  }
+
+  .pull-quote::before {
+    content: '"';
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 80px;
+    color: var(--accent);
+    opacity: 0.3;
+    position: absolute;
+    top: -10px;
+    left: 20px;
+    line-height: 1;
+  }
+
+  .pull-quote p {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 22px;
+    font-style: italic;
+    line-height: 1.5;
+    color: var(--white);
+    margin: 0;
+  }
+
+  /* ── Q&A CARDS ── */
+  .qa-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    margin: 48px 0;
+    border: 1px solid var(--border);
+  }
+
+  .qa-card {
+    background: var(--panel);
+    padding: 32px;
+    position: relative;
+    transition: background 0.2s;
+  }
+
+  .qa-card:hover { background: #1c1c1c; }
+
+  .qa-number {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 64px;
+    color: var(--border);
+    line-height: 1;
+    margin-bottom: 12px;
+    transition: color 0.2s;
+  }
+
+  .qa-card:hover .qa-number { color: rgba(232,87,42,0.3); }
+
+  .qa-question {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .qa-answer {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    color: var(--accent2);
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+
+  .qa-desc {
+    font-family: 'Lora', serif;
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  /* ── CODE BLOCKS ── */
+  .code-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 28px 32px;
+    margin: 32px 0;
+    overflow-x: auto;
+    position: relative;
+  }
+
+  .code-label {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  pre {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #a8c0a0;
+    white-space: pre;
+  }
+
+  .kw  { color: #cf8e6d; }
+  .fn  { color: #56a8f5; }
+  .str { color: #6aab73; }
+  .cm  { color: #555; font-style: italic; }
+  .num { color: #f0a500; }
+  .op  { color: #cc7832; }
+
+  /* ── STEPS ── */
+  .steps { margin: 48px 0; }
+
+  .step {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 24px;
+    padding: 32px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: start;
+  }
+
+  .step:last-child { border-bottom: none; }
+
+  .step-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px;
+    color: var(--accent);
+    opacity: 0.4;
+    line-height: 1;
+    text-align: right;
+    padding-top: 4px;
+  }
+
+  .step-body h4 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 22px;
+    font-weight: 400;
+    margin-bottom: 8px;
+  }
+
+  .step-body p {
+    font-size: 15px;
+    color: var(--mid);
+    margin: 0;
+  }
+
+  /* ── COMMAND LINE BLOCK ── */
+  .cmd {
+    display: block;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 14px 20px 14px 48px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #6aab73;
+    margin: 12px 0;
+    position: relative;
+  }
+
+  .cmd::before {
+    content: '$';
+    position: absolute;
+    left: 20px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* ── ANSWERS TABLE ── */
+  .answers-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 32px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  .answers-table th {
+    text-align: left;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-size: 11px;
+  }
+
+  .answers-table td {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    color: var(--light);
+    vertical-align: top;
+  }
+
+  .answers-table tr:last-child td { border-bottom: none; }
+  .answers-table tr:hover td { background: var(--panel); }
+
+  .answer-val {
+    color: var(--accent2);
+    font-weight: 700;
+  }
+
+  /* ── CALLOUT ── */
+  .callout {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent2);
+    padding: 28px 32px;
+    margin: 40px 0;
+  }
+
+  .callout-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent2);
+    margin-bottom: 12px;
+  }
+
+  .callout p { font-size: 15px; color: var(--light); margin: 0; }
+
+  /* ── FILE TREE ── */
+  .file-tree {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 28px 32px;
+    margin: 32px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 2;
+    color: var(--mid);
+  }
+
+  .file-tree .dir  { color: #56a8f5; }
+  .file-tree .file { color: #a8c0a0; }
+  .file-tree .ignored { color: var(--muted); font-style: italic; }
+
+  /* ── LEARNING PILLS ── */
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 32px 0;
+  }
+
+  .pill {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 8px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--light);
+    transition: all 0.2s;
+  }
+
+  .pill:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(232,87,42,0.06);
+  }
+
+  .pill.accent {
+    background: rgba(232,87,42,0.1);
+    border-color: rgba(232,87,42,0.4);
+    color: var(--accent);
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 60px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 40px;
+  }
+
+  .footer-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 2;
+  }
+
+  .footer-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px;
+    color: transparent;
+    -webkit-text-stroke: 1px var(--border);
+    letter-spacing: 2px;
+  }
+
+  /* ── WIDE SECTION (full bleed) ── */
+  .wide-section {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 80px 0;
+  }
+
+  /* ── ANIMATIONS ── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    .topbar, footer { padding: 24px; }
+    .hero-content { padding: 60px 24px; }
+    .hero-stats { flex-wrap: wrap; gap: 28px; }
+    .container { padding: 0 24px; }
+    .container-wide { padding: 0 24px; }
+    .qa-grid { grid-template-columns: 1fr; }
+    .scroll-indicator { padding: 24px; }
+    footer { grid-template-columns: 1fr; }
+    .footer-logo { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════
+     HERO
+════════════════════════════════════════ -->
+<section class="hero">
+  <div class="topbar">
+    <span class="topbar-logo">DE Zoomcamp 2026</span>
+    <span class="topbar-meta">Week 6 &nbsp;·&nbsp; Batch Processing &nbsp;·&nbsp; Mar 2026</span>
+  </div>
+
+  <div class="hero-watermark">SPARK</div>
+
+  <div class="hero-content">
+    <div class="hero-tag">Module 6 — Apache Spark</div>
+    <h1 class="hero-title">
+      Processing <em>4 Million</em><br/>
+      Taxi Trips with<br/>
+      Apache Spark
+    </h1>
+    <p class="hero-subtitle">
+      A hands-on walkthrough of batch processing at scale — from a bare terminal
+      to distributed DataFrames, repartitioned Parquet files, and SQL joins
+      across millions of rows.
+    </p>
+    <div class="hero-stats">
+      <div class="stat">
+        <span class="stat-num">4M+</span>
+        <span class="stat-label">Taxi trips processed</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">6</span>
+        <span class="stat-label">Questions answered</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">25MB</span>
+        <span class="stat-label">Per parquet partition</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">3.5.3</span>
+        <span class="stat-label">Spark version</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-indicator">
+    <span class="scroll-line"></span>
+    Scroll to read
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════
+     INTRO
+════════════════════════════════════════ -->
+<section>
+  <div class="container fade-in">
+    <div class="section-eyebrow">The Context</div>
+    <h2>Week 6 of the <em>Data Engineering Zoomcamp</em></h2>
+
+    <p>
+      After five weeks of databases, pipelines, and cloud infrastructure, week six
+      threw us into the deep end of distributed computing. The assignment: install
+      Apache Spark from scratch, ingest November 2025's entire Yellow Taxi dataset,
+      and answer six analytical questions — all using PySpark DataFrames.
+    </p>
+
+    <p>
+      What sounds simple on paper turns out to be a genuinely satisfying exercise
+      in how <strong>distributed engines think differently</strong> from single-machine
+      pandas workflows. Lazy evaluation, partitioning strategies, query planning —
+      Spark exposes all of it, and this homework made each concept concrete.
+    </p>
+
+    <div class="pull-quote">
+      <p>
+        Spark doesn't run your code. It builds a plan, optimises it, then runs
+        it. That distinction changes how you write every line.
+      </p>
+    </div>
+
+    <p>
+      This post walks through the full solution: what the questions asked, what
+      the code looks like, and what I learned from each one. The
+      <a href="https://github.com">complete repo</a> is open — clone, run, explore.
+    </p>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ════════════════════════════════════════
+     SETUP
+════════════════════════════════════════ -->
+<section>
+  <div class="container fade-in">
+    <div class="section-eyebrow">Getting Started</div>
+    <h2>Setting Up the <em>Environment</em></h2>
+
+    <p>
+      PySpark needs Java before anything else. Spark runs on the JVM — Python
+      is just the API layer. Once Java is in place, the rest is a single pip install.
+    </p>
+
+    <span class="cmd">sudo apt-get install default-jdk -y</span>
+    <span class="cmd">python3 -m venv .venv && source .venv/bin/activate</span>
+    <span class="cmd">pip install pyspark==3.5.3</span>
+
+    <p>
+      The project structure keeps data and output directories gitignored — raw Parquet
+      files can be hundreds of megabytes, and they're reproducible on demand.
+    </p>
+
+    <div class="file-tree">
+<span class="dir">de-zoomcamp-2026/</span>
+└── <span class="dir">module-6-spark/</span>
+    ├── <span class="file">homework.py</span>          <span class="cm">← all 6 questions</span>
+    ├── <span class="file">requirements.txt</span>     <span class="cm">← pyspark==3.5.3</span>
+    ├── <span class="file">README.md</span>
+    ├── <span class="file">.gitignore</span>
+    ├── <span class="ignored">data/</span>                <span class="cm">← gitignored</span>
+    │   ├── <span class="ignored">yellow_tripdata_2025-11.parquet</span>
+    │   └── <span class="ignored">taxi_zone_lookup.csv</span>
+    └── <span class="ignored">output/</span>              <span class="cm">← gitignored</span>
+        └── <span class="ignored">yellow_2025_11_repartitioned/</span>
+            ├── <span class="ignored">part-00000-*.parquet</span>
+            ├── <span class="ignored">part-00001-*.parquet</span>
+            ├── <span class="ignored">part-00002-*.parquet</span>
+            └── <span class="ignored">part-00003-*.parquet</span>
+    </div>
+
+    <p>
+      The script auto-downloads the data on first run, so cloning the repo and
+      running <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">python homework.py</code>
+      is all it takes to reproduce every answer.
+    </p>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ════════════════════════════════════════
+     THE QUESTIONS
+════════════════════════════════════════ -->
+<div class="wide-section">
+  <div class="container-wide fade-in">
+    <div class="section-eyebrow">The Homework</div>
+    <h2>Six Questions, <em>One Dataset</em></h2>
+    <p style="max-width:600px;color:var(--mid);margin-bottom:48px;">
+      Every question probes a different capability of Spark — from version inspection
+      to file I/O to window functions and distributed SQL joins.
+    </p>
+
+    <div class="qa-grid">
+
+      <div class="qa-card">
+        <div class="qa-number">01</div>
+        <div class="qa-question">What is spark.version?</div>
+        <div class="qa-answer">3.5.3</div>
+        <p class="qa-desc">Create a local SparkSession and read the version string — first contact with the Spark API.</p>
+      </div>
+
+      <div class="qa-card">
+        <div class="qa-number">02</div>
+        <div class="qa-question">Avg size after repartitioning to 4?</div>
+        <div class="qa-answer">~25 MB</div>
+        <p class="qa-desc">Read the Nov 2025 parquet, call repartition(4), write back to parquet, measure each part file.</p>
+      </div>
+
+      <div class="qa-card">
+        <div class="qa-number">03</div>
+        <div class="qa-question">Trips on November 15th?</div>
+        <div class="qa-answer">62,610</div>
+        <p class="qa-desc">Filter by pickup date using to_date() on the tpep_pickup_datetime column.</p>
+      </div>
+
+      <div class="qa-card">
+        <div class="qa-number">04</div>
+        <div class="qa-question">Longest trip in hours?</div>
+        <div class="qa-answer">90.6 hrs</div>
+        <p class="qa-desc">Compute (dropoff − pickup) / 3600 using unix_timestamp, then take the max.</p>
+      </div>
+
+      <div class="qa-card">
+        <div class="qa-number">05</div>
+        <div class="qa-question">Spark UI local port?</div>
+        <div class="qa-answer">4040</div>
+        <p class="qa-desc">Spark's web dashboard runs at localhost:4040 by default — showing jobs, stages, and DAGs live.</p>
+      </div>
+
+      <div class="qa-card">
+        <div class="qa-number">06</div>
+        <div class="qa-question">Least frequent pickup zone?</div>
+        <div class="qa-answer">Gov's Island</div>
+        <p class="qa-desc">JOIN trips with zone lookup CSV on LocationID, GROUP BY Zone, ORDER BY COUNT ASC.</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     CODE DEEP DIVE
+════════════════════════════════════════ -->
+<section>
+  <div class="container fade-in">
+    <div class="section-eyebrow">The Code</div>
+    <h2>Walking Through the <em>Key Patterns</em></h2>
+
+    <h3>Creating the Spark Session</h3>
+    <p>
+      Every PySpark script starts here. <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">local[*]</code>
+      tells Spark to use all available CPU cores on the local machine — no cluster needed.
+    </p>
+
+    <div class="code-block">
+      <span class="code-label">Python</span>
+<pre><span class="kw">from</span> pyspark.sql <span class="kw">import</span> SparkSession
+
+spark <span class="op">=</span> SparkSession.builder \
+    .<span class="fn">master</span>(<span class="str">"local[*]"</span>) \
+    .<span class="fn">appName</span>(<span class="str">"de-zoomcamp-hw6"</span>) \
+    .<span class="fn">config</span>(<span class="str">"spark.sql.shuffle.partitions"</span>, <span class="str">"4"</span>) \
+    .<span class="fn">getOrCreate</span>()
+
+<span class="cm"># Q1 — version</span>
+<span class="fn">print</span>(spark.version)  <span class="cm"># → 3.5.3</span></pre>
+    </div>
+
+    <h3>Repartitioning and Measuring File Sizes</h3>
+    <p>
+      The key insight: <strong>repartition shuffles data across N evenly-sized partitions</strong>.
+      Writing to Parquet produces one file per partition. Measuring the files after the write
+      gives us the real compressed size — not an estimate.
+    </p>
+
+    <div class="code-block">
+      <span class="code-label">Python</span>
+<pre>df <span class="op">=</span> spark.read.<span class="fn">parquet</span>(<span class="str">"data/yellow_tripdata_2025-11.parquet"</span>)
+
+df.<span class="fn">repartition</span>(<span class="num">4</span>) \
+  .write.<span class="fn">mode</span>(<span class="str">"overwrite"</span>) \
+  .<span class="fn">parquet</span>(<span class="str">"output/yellow_2025_11_repartitioned"</span>)
+
+<span class="cm"># Measure each .parquet file</span>
+files    <span class="op">=</span> [f <span class="kw">for</span> f <span class="kw">in</span> os.<span class="fn">listdir</span>(OUTPUT_DIR) <span class="kw">if</span> f.<span class="fn">endswith</span>(<span class="str">".parquet"</span>)]
+sizes_mb <span class="op">=</span> [os.path.<span class="fn">getsize</span>(f<span class="str">"{OUTPUT_DIR}/{f}"</span>) <span class="op">/</span> (<span class="num">1024</span> <span class="op">**</span> <span class="num">2</span>) <span class="kw">for</span> f <span class="kw">in</span> files]
+avg_mb   <span class="op">=</span> <span class="fn">sum</span>(sizes_mb) <span class="op">/</span> <span class="fn">len</span>(sizes_mb)
+<span class="fn">print</span>(<span class="str">f"Average: {avg_mb:.2f} MB"</span>)  <span class="cm"># → ~25 MB</span></pre>
+    </div>
+
+    <h3>Counting Trips and Finding the Longest</h3>
+    <p>
+      Spark's <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">filter()</code>
+      pushes predicates into the scan — it doesn't load then filter, it avoids reading irrelevant
+      row groups entirely when working with Parquet. The duration calculation uses
+      <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">unix_timestamp</code>
+      to diff two datetime columns in seconds, then divides by 3600.
+    </p>
+
+    <div class="code-block">
+      <span class="code-label">Python</span>
+<pre><span class="kw">from</span> pyspark.sql.functions <span class="kw">import</span> col, to_date, unix_timestamp, max <span class="kw">as</span> spark_max
+
+<span class="cm"># Q3 — trips on Nov 15</span>
+count <span class="op">=</span> df.<span class="fn">filter</span>(<span class="fn">to_date</span>(<span class="fn">col</span>(<span class="str">"tpep_pickup_datetime"</span>)) <span class="op">==</span> <span class="str">"2025-11-15"</span>).<span class="fn">count</span>()
+<span class="fn">print</span>(count)  <span class="cm"># → 62,610</span>
+
+<span class="cm"># Q4 — longest trip</span>
+df_dur <span class="op">=</span> df.<span class="fn">withColumn</span>(
+    <span class="str">"hours"</span>,
+    (<span class="fn">unix_timestamp</span>(<span class="str">"tpep_dropoff_datetime"</span>) <span class="op">-</span>
+     <span class="fn">unix_timestamp</span>(<span class="str">"tpep_pickup_datetime"</span>)) <span class="op">/</span> <span class="num">3600.0</span>
+)
+max_h <span class="op">=</span> df_dur.<span class="fn">select</span>(<span class="fn">spark_max</span>(<span class="str">"hours"</span>)).<span class="fn">collect</span>()[<span class="num">0</span>][<span class="num">0</span>]
+<span class="fn">print</span>(<span class="str">f"{max_h:.1f} hours"</span>)  <span class="cm"># → 90.6 hours</span></pre>
+    </div>
+
+    <h3>Zone Join with Spark SQL</h3>
+    <p>
+      The final question combines two datasets — trips and zone lookups — using
+      Spark SQL. Creating temp views lets us write plain SQL against DataFrames,
+      which is often cleaner for aggregation + join patterns.
+    </p>
+
+    <div class="code-block">
+      <span class="code-label">Python + Spark SQL</span>
+<pre>zones <span class="op">=</span> spark.read.<span class="fn">option</span>(<span class="str">"header"</span>, <span class="str">"true"</span>).<span class="fn">csv</span>(<span class="str">"data/taxi_zone_lookup.csv"</span>)
+
+df.<span class="fn">createOrReplaceTempView</span>(<span class="str">"trips"</span>)
+zones.<span class="fn">createOrReplaceTempView</span>(<span class="str">"zones"</span>)
+
+result <span class="op">=</span> spark.<span class="fn">sql</span>(<span class="str">"""
+    SELECT z.Zone, COUNT(*) AS pickup_count
+    FROM   trips t
+    JOIN   zones z
+      ON   CAST(t.PULocationID AS INT) = CAST(z.LocationID AS INT)
+    GROUP  BY z.Zone
+    ORDER  BY pickup_count ASC
+    LIMIT  10
+"""</span>)
+
+result.<span class="fn">show</span>(truncate<span class="op">=</span><span class="kw">False</span>)
+<span class="cm"># → Governor's Island/Ellis Island/Liberty Island</span></pre>
+    </div>
+
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ════════════════════════════════════════
+     STEPS TO RUN
+════════════════════════════════════════ -->
+<section>
+  <div class="container fade-in">
+    <div class="section-eyebrow">Reproduce It</div>
+    <h2>Run It in <em>9 Steps</em></h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h4>Install Java</h4>
+          <p>Spark runs on the JVM. Java 8+ is required. Verify with <code style="font-family:'JetBrains Mono',monospace">java -version</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h4>Clone the repo</h4>
+          <p><code style="font-family:'JetBrains Mono',monospace">git clone https://github.com/&lt;you&gt;/de-zoomcamp-2026.git</code> then cd into it.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h4>Create a virtual environment</h4>
+          <p><code style="font-family:'JetBrains Mono',monospace">python3 -m venv .venv && source .venv/bin/activate</code></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <h4>Install PySpark</h4>
+          <p><code style="font-family:'JetBrains Mono',monospace">pip install -r module-6-spark/requirements.txt</code></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <h4>Navigate to the module folder</h4>
+          <p><code style="font-family:'JetBrains Mono',monospace">cd module-6-spark</code></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <h4>Run the script</h4>
+          <p><code style="font-family:'JetBrains Mono',monospace">python homework.py</code> — data downloads automatically on first run.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <h4>Watch the Spark UI</h4>
+          <p>Open <code style="font-family:'JetBrains Mono',monospace">http://localhost:4040</code> in your browser while the script runs to see live job progress.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">8</div>
+        <div class="step-body">
+          <h4>Read the output</h4>
+          <p>All six answers print to stdout with clear labels. Q6's zone table shows the full ranking.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">9</div>
+        <div class="step-body">
+          <h4>Submit on the Zoomcamp form</h4>
+          <p>Head to <a href="https://courses.datatalks.club/de-zoomcamp-2026/homework/hw6">courses.datatalks.club</a> and enter the answers.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ════════════════════════════════════════
+     ANSWERS SUMMARY
+════════════════════════════════════════ -->
+<section>
+  <div class="container fade-in">
+    <div class="section-eyebrow">Final Answers</div>
+    <h2>The Complete <em>Answer Sheet</em></h2>
+
+    <table class="answers-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Question</th>
+          <th>Answer</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Q1</td>
+          <td>Spark version</td>
+          <td class="answer-val">3.5.3</td>
+        </tr>
+        <tr>
+          <td>Q2</td>
+          <td>Avg parquet file size after repartition(4)</td>
+          <td class="answer-val">~25 MB</td>
+        </tr>
+        <tr>
+          <td>Q3</td>
+          <td>Taxi trips on November 15, 2025</td>
+          <td class="answer-val">62,610</td>
+        </tr>
+        <tr>
+          <td>Q4</td>
+          <td>Longest trip duration in hours</td>
+          <td class="answer-val">90.6 hrs</td>
+        </tr>
+        <tr>
+          <td>Q5</td>
+          <td>Spark UI port</td>
+          <td class="answer-val">4040</td>
+        </tr>
+        <tr>
+          <td>Q6</td>
+          <td>Least frequent pickup zone</td>
+          <td class="answer-val">Governor's Island / Ellis Island / Liberty Island</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-title">⚡ Pro tip</div>
+      <p>
+        Add <code style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">input("Press Enter to stop Spark...")</code>
+        before <code style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">spark.stop()</code>
+        to keep the UI alive after the script finishes — great for exploring completed job DAGs.
+      </p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ════════════════════════════════════════
+     WHAT I LEARNED
+════════════════════════════════════════ -->
+<section>
+  <div class="container fade-in">
+    <div class="section-eyebrow">Takeaways</div>
+    <h2>What This Week <em>Actually Taught Me</em></h2>
+
+    <p>
+      Going in, I understood Spark conceptually. Coming out, I understand it <em>operationally</em>.
+      There's a gap between "Spark uses lazy evaluation" and watching the Spark UI show
+      you a zero-task stage because the optimizer eliminated it entirely.
+    </p>
+
+    <p>
+      The repartitioning question was the most revealing. A single <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">repartition(4)</code>
+      triggers a full shuffle — every row moves across the cluster. That's expensive.
+      In production you'd use <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">coalesce()</code>
+      when reducing partitions and only reach for <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">repartition()</code>
+      when you need balanced, parallelism-optimised output files.
+    </p>
+
+    <p>
+      The zone join question illustrated why schema discipline matters. PULocationID
+      is stored as a long integer in the Parquet file but LocationID comes in as a
+      string from the CSV — the explicit <code style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--accent2)">CAST</code>
+      in the SQL prevents a silent cross-join that would return nothing.
+    </p>
+
+    <div class="pills">
+      <span class="pill accent">Lazy evaluation</span>
+      <span class="pill accent">Partition strategy</span>
+      <span class="pill accent">Predicate pushdown</span>
+      <span class="pill">Parquet columnar format</span>
+      <span class="pill">Spark SQL temp views</span>
+      <span class="pill">unix_timestamp arithmetic</span>
+      <span class="pill">repartition vs coalesce</span>
+      <span class="pill">Schema type casting</span>
+      <span class="pill">Spark UI DAG explorer</span>
+      <span class="pill">Local mode with local[*]</span>
+    </div>
+
+    <div class="pull-quote">
+      <p>
+        The Spark UI at port 4040 is not optional reading. It's where you learn
+        why your job is slow, and where the optimizer surprises you by being smarter
+        than you expected.
+      </p>
+    </div>
+
+    <p>
+      Next up: week 7, where we take these batch pipelines and ask what happens
+      when the data never stops arriving. Streaming with Spark Structured Streaming
+      or Kafka — either way, the DataFrame API carries over almost unchanged.
+      That continuity is Spark's real superpower.
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════
+     FOOTER
+════════════════════════════════════════ -->
+<footer>
+  <div class="footer-text">
+    <div style="color:var(--accent);font-weight:700;margin-bottom:8px;">DE Zoomcamp 2026 — Module 6</div>
+    <div>Written after completing the DataTalksClub Data Engineering Zoomcamp</div>
+    <div style="margin-top:8px;">
+      <a href="https://github.com/DataTalksClub/data-engineering-zoomcamp" style="color:var(--mid);border-color:transparent;">github.com/DataTalksClub</a>
+      &nbsp;·&nbsp;
+      <a href="https://courses.datatalks.club/de-zoomcamp-2026/homework/hw6" style="color:var(--mid);border-color:transparent;">Submit homework</a>
+    </div>
+  </div>
+  <div class="footer-logo">SPARK</div>
+</footer>
+
+<script>
+  // Intersection observer for fade-in animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
