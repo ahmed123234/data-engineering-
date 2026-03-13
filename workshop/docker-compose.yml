@@ -1,0 +1,94 @@
+version: "3.7"
+services:
+
+  # ──────────────────────────────────────────────
+  # Redpanda (Kafka-compatible broker)
+  # ──────────────────────────────────────────────
+  redpanda-1:
+    hostname: redpanda-1
+    container_name: redpanda-1
+    image: redpandadata/redpanda:v25.3.9
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --reserve-memory
+      - 0M
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - PLAINTEXT://redpanda-1:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda-1:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"   # Kafka API (external)
+      - "9644:9644"   # Redpanda admin API
+      - "8082:8082"   # HTTP Proxy (Pandaproxy)
+      - "8081:8081"   # Schema Registry
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────────
+  # Flink Job Manager
+  # ──────────────────────────────────────────────
+  jobmanager:
+    image: flink:1.16-scala_2.12
+    container_name: jobmanager
+    hostname: jobmanager
+    ports:
+      - "8082:8081"   # Flink Web UI  →  visit http://localhost:8082
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.flamegraph.enabled: true
+    volumes:
+      - ./flink:/opt/flink/usrlib   # mount your job scripts here
+
+  # ──────────────────────────────────────────────
+  # Flink Task Manager
+  # ──────────────────────────────────────────────
+  taskmanager:
+    image: flink:1.16-scala_2.12
+    container_name: taskmanager
+    hostname: taskmanager
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    scale: 1
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+    volumes:
+      - ./flink:/opt/flink/usrlib
+
+  # ──────────────────────────────────────────────
+  # PostgreSQL
+  # ──────────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
