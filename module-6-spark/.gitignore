@@ -1,0 +1,27 @@
+# Raw data files (large — do not commit)
+data/
+output/
+
+# Spark + Python artifacts
+__pycache__/
+*.py[cod]
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
