@@ -1,35 +1,30 @@
-import sys
-from datetime import datetime
-from pathlib import Path
+"""
+Q3: Kafka Consumer - count trips with trip_distance > 5.0
+Run: python consumer.py
+"""
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
+import json
 from kafka import KafkaConsumer
-from models import ride_deserializer
 
-server = 'localhost:9092'
-topic_name = 'rides'
+TOPIC     = "green-trips"
+BOOTSTRAP = "localhost:9092"
 
 consumer = KafkaConsumer(
-    topic_name,
-    bootstrap_servers=[server],
-    auto_offset_reset='earliest',
-    group_id='rides-console',
-    value_deserializer=ride_deserializer
+    TOPIC,
+    bootstrap_servers=BOOTSTRAP,
+    auto_offset_reset="earliest",          # read from the very beginning
+    value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+    consumer_timeout_ms=10_000,            # stop after 10 s of silence
 )
 
-print(f"Listening to {topic_name}...")
-
+total = 0
 count = 0
-for message in consumer:
-    ride = message.value
-    pickup_dt = datetime.fromtimestamp(ride.tpep_pickup_datetime / 1000)
-    print(f"Received: PU={ride.PULocationID}, DO={ride.DOLocationID}, "
-          f"distance={ride.trip_distance}, amount=${ride.total_amount:.2f}, "
-          f"pickup={pickup_dt}")
-    count += 1
-    if count >= 10:
-        print(f"\n... received {count} messages so far (stopping after 10 for demo)")
-        break
 
-consumer.close()
+for msg in consumer:
+    trip = msg.value
+    total += 1
+    if trip.get("trip_distance", 0) > 5.0:
+        count += 1
+
+print(f"Total trips consumed : {total:,}")
+print(f"Trips with distance > 5 km : {count:,}")

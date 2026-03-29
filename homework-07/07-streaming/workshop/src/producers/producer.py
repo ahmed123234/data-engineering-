@@ -1,42 +1,51 @@
-import dataclasses
-import json
-import sys
-import time
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+"""
+Q1 & Q2: Kafka Producer - sends green taxi trip data to Redpanda
+Run: python producer.py
+"""
 
 import pandas as pd
+import json
 from kafka import KafkaProducer
-from models import Ride, ride_from_row
+from time import time
 
-# Download NYC yellow taxi trip data (first 1000 rows)
-url = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2025-11.parquet"
-columns = ['PULocationID', 'DOLocationID', 'trip_distance', 'total_amount', 'tpep_pickup_datetime']
-df = pd.read_parquet(url, columns=columns).head(1000)
+# ── Config ──────────────────────────────────────────────────────────────────
+TOPIC        = "green-trips"
+BOOTSTRAP    = "localhost:9092"
+PARQUET_FILE = "../data/green_tripdata_2025-10.parquet"
 
-def ride_serializer(ride):
-    ride_dict = dataclasses.asdict(ride)
-    json_str = json.dumps(ride_dict)
-    return json_str.encode('utf-8')
+COLUMNS = [
+    "lpep_pickup_datetime",
+    "lpep_dropoff_datetime",
+    "PULocationID",
+    "DOLocationID",
+    "passenger_count",
+    "trip_distance",
+    "tip_amount",
+    "total_amount",
+]
 
-server = 'localhost:9092'
-
+# ── Producer ─────────────────────────────────────────────────────────────────
 producer = KafkaProducer(
-    bootstrap_servers=[server],
-    value_serializer=ride_serializer
+    bootstrap_servers=BOOTSTRAP,
+    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
 )
-t0 = time.time()
 
-topic_name = 'rides'
+# ── Load data ────────────────────────────────────────────────────────────────
+df = pd.read_parquet(PARQUET_FILE, columns=COLUMNS)
 
-for _, row in df.iterrows():
-    ride = ride_from_row(row)
-    producer.send(topic_name, value=ride)
-    print(f"Sent: {ride}")
-    time.sleep(0.01)
+# Convert datetime columns to strings so they are JSON-serialisable
+for col in ["lpep_pickup_datetime", "lpep_dropoff_datetime"]:
+    df[col] = df[col].astype(str)
+
+print(f"Loaded {len(df):,} rows. Sending to topic '{TOPIC}' ...")
+
+# ── Send ─────────────────────────────────────────────────────────────────────
+t0 = time()
+
+for record in df.to_dict(orient="records"):
+    producer.send(TOPIC, value=record)
 
 producer.flush()
 
-t1 = time.time()
-print(f'took {(t1 - t0):.2f} seconds')
+t1 = time()
+print(f"took {(t1 - t0):.2f} seconds")
